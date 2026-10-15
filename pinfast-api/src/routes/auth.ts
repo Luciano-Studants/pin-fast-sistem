@@ -283,11 +283,18 @@ export async function authRoutes(app: FastifyInstance) {
             },
           }),
         ]);
-        const link = `${app.config.APP_URL!.replace(/\/$/, "")}/?reset=${token}`;
-        // Sem await: o tempo de resposta não revela se o e-mail está cadastrado.
-        void app.mailer
-          .send({ to: user.email, ...passwordResetMail(user.name, link) })
-          .catch((error) => request.log.error({ error }, "Falha ao enviar e-mail de redefinição"));
+        const appUrl = app.config.APP_URL;
+        if (!appUrl) {
+          request.log.error("APP_URL não configurada: e-mail de redefinição não enviado");
+        } else {
+          const link = `${appUrl.replace(/\/$/, "")}/?reset=${token}`;
+          // Sem await: o tempo de resposta não revela se o e-mail está cadastrado.
+          void app.mailer
+            .send({ to: user.email, ...passwordResetMail(user.name, link) })
+            .catch((error) =>
+              request.log.error({ error }, "Falha ao enviar e-mail de redefinição"),
+            );
+        }
       }
       return reply.status(204).send();
     },
