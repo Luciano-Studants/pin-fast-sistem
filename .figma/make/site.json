@@ -1,0 +1,15 @@
+{
+  "description": "Organize seus estudos com post-its, notas, documentos, planilhas, questionários e pomodoro.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  },
+  "title": "PINFAST",
+  "language": "pt-BR",
+  "icons": {
+    "icon": "/favicon.svg"
+  }
+}

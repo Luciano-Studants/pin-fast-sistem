@@ -1,0 +1,52 @@
+name: Deploy
+
+# Ative definindo a variável de repositório DEPLOY_ENABLED=true e os segredos abaixo.
+# Fluxo: CI verde na main -> API no Fly.io (migrações no release_command) -> frontend no Cloudflare Pages.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  api:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency: deploy-api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        working-directory: pinfast-api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  frontend:
+    needs: api
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_FILES_ORIGIN: ${{ vars.VITE_FILES_ORIGIN }}
+          CSP_MODE: ${{ vars.CSP_MODE }}
+          REQUIRE_API_URL: "true"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=${{ vars.CF_PAGES_PROJECT || 'pinfast' }}

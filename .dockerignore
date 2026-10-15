@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+dist
+build
+.cache
+.vite
+*.log
+pinfast-api
+DEPLOYMENT.md
+DOCKER_LOCAL.md

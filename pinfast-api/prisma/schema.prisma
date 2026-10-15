@@ -1,0 +1,377 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum CollaborationRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum FocusSessionStatus {
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum MigrationStatus {
+  STARTED
+  DATA_IMPORTED
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                 String                @id @default(cuid())
+  email              String                @unique
+  username           String?               @unique
+  passwordHash       String
+  name               String
+  avatarUrl          String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  refreshTokens      RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  workspaces         Workspace[]
+  collaborationOwned CollaborationSpace[]  @relation("CollaborationOwner")
+  collaborationLinks CollaborationMember[]
+  postIts            PostIt[]
+  notes              Note[]
+  quickLinks         QuickLink[]
+  documents          TextDocument[]
+  spreadsheets       Spreadsheet[]
+  routineTasks       RoutineTask[]
+  quizzes            Quiz[]
+  quizAttempts       QuizAttempt[]
+  whiteboard         Whiteboard?
+  pomodoroSettings   PomodoroSettings?
+  focusSessions      FocusSession[]
+  preferences        UserPreferences?
+  dataMigrations     DataMigration[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model Workspace {
+  id           String         @id @default(cuid())
+  ownerId      String
+  name         String
+  color        String
+  icon         String
+  description  String?
+  position     Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  postIts      PostIt[]
+  notes        Note[]
+  quickLinks   QuickLink[]
+  documents    TextDocument[]
+  spreadsheets Spreadsheet[]
+
+  @@index([ownerId, position])
+  @@map("workspaces")
+}
+
+model CollaborationSpace {
+  id          String                @id @default(cuid())
+  ownerId     String
+  name        String
+  color       String
+  description String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  owner       User                  @relation("CollaborationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     CollaborationMember[]
+
+  @@index([ownerId])
+  @@map("collaboration_spaces")
+}
+
+model CollaborationMember {
+  id                   String             @id @default(cuid())
+  collaborationSpaceId String
+  userId               String?
+  email                String
+  name                 String?
+  role                 CollaborationRole  @default(EDITOR)
+  createdAt            DateTime           @default(now())
+  collaborationSpace   CollaborationSpace @relation(fields: [collaborationSpaceId], references: [id], onDelete: Cascade)
+  user                 User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([collaborationSpaceId, email])
+  @@index([userId])
+  @@map("collaboration_members")
+}
+
+model PostIt {
+  id          String             @id @default(cuid())
+  userId      String
+  workspaceId String?
+  title       String
+  description String?            @db.Text
+  dueDate     DateTime?          @db.Date
+  dueTime     String?
+  color       String
+  positionX   Float              @default(0)
+  positionY   Float              @default(0)
+  completed   Boolean            @default(false)
+  completedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  attachments PostItAttachment[]
+
+  @@index([userId, deletedAt])
+  @@index([workspaceId])
+  @@index([dueDate])
+  @@map("post_its")
+}
+
+model PostItAttachment {
+  id        String   @id @default(cuid())
+  postItId  String
+  name      String
+  mimeType  String
+  size      Int
+  objectKey String   @unique
+  url       String
+  createdAt DateTime @default(now())
+  postIt    PostIt   @relation(fields: [postItId], references: [id], onDelete: Cascade)
+
+  @@index([postItId])
+  @@map("post_it_attachments")
+}
+
+model Note {
+  id          String     @id @default(cuid())
+  userId      String
+  workspaceId String?
+  title       String?
+  content     String     @db.Text
+  color       String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@map("notes")
+}
+
+model QuickLink {
+  id          String     @id @default(cuid())
+  userId      String
+  workspaceId String?
+  name        String
+  url         String
+  icon        String?
+  color       String?
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, position])
+  @@index([workspaceId])
+  @@map("quick_links")
+}
+
+model TextDocument {
+  id          String     @id @default(cuid())
+  userId      String
+  workspaceId String?
+  title       String
+  content     String     @db.Text
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, updatedAt])
+  @@index([workspaceId])
+  @@map("text_documents")
+}
+
+model Spreadsheet {
+  id           String     @id @default(cuid())
+  userId       String
+  workspaceId  String?
+  title        String
+  cells        Json
+  columnWidths Json
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, updatedAt])
+  @@index([workspaceId])
+  @@map("spreadsheets")
+}
+
+model RoutineTask {
+  id        String   @id @default(cuid())
+  userId    String
+  weekday   Int
+  name      String
+  time      String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, weekday, position])
+  @@map("routine_tasks")
+}
+
+model Quiz {
+  id               String        @id @default(cuid())
+  userId           String
+  title            String
+  questions        Json
+  timeLimitMinutes Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attempts         QuizAttempt[]
+
+  @@index([userId, updatedAt])
+  @@map("quizzes")
+}
+
+model QuizAttempt {
+  id         String    @id @default(cuid())
+  userId     String
+  quizId     String
+  answers    Json
+  startedAt  DateTime
+  finishedAt DateTime?
+  score      Float?
+  total      Float?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz       Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([quizId])
+  @@map("quiz_attempts")
+}
+
+model Whiteboard {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  background String   @default("white")
+  strokes    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("whiteboards")
+}
+
+model PomodoroSettings {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  preset            String   @default("classic")
+  studyMinutes      Int      @default(25)
+  shortBreakMinutes Int      @default(5)
+  longBreakMinutes  Int      @default(15)
+  sessionsPerCycle  Int      @default(4)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("pomodoro_settings")
+}
+
+model FocusSession {
+  id                String             @id @default(cuid())
+  userId            String
+  preset            String
+  studyMinutes      Int
+  shortBreakMinutes Int
+  longBreakMinutes  Int
+  sessionsPerCycle  Int
+  status            FocusSessionStatus @default(RUNNING)
+  startedAt         DateTime           @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@map("focus_sessions")
+}
+
+model UserPreferences {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  darkMode  Boolean  @default(false)
+  pageZoom  Float    @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model DataMigration {
+  id                  String          @id @default(cuid())
+  userId              String
+  source              String
+  version             Int
+  status              MigrationStatus @default(STARTED)
+  expectedAttachments Int             @default(0)
+  uploadedAttachments Int             @default(0)
+  summary             Json?
+  errorMessage        String?
+  startedAt           DateTime        @default(now())
+  completedAt         DateTime?
+  updatedAt           DateTime        @updatedAt
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, version])
+  @@index([userId, status])
+  @@map("data_migrations")
+}

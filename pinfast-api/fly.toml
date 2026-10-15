@@ -1,0 +1,42 @@
+app = "pinfast-api"
+primary_region = "gru"
+kill_signal = "SIGTERM"
+kill_timeout = 15
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "3000"
+  NODE_ENV = "production"
+
+# Migrações rodam uma única vez por deploy, antes de trocar as máquinas.
+[deploy]
+  release_command = "node node_modules/prisma/build/index.js migrate deploy"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # 1 máquina sempre ligada evita a partida a frio (login lento). Use 0 para economizar.
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

@@ -1,0 +1,108 @@
+name: pinfast
+
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pinfast
+      POSTGRES_USER: pinfast
+      POSTGRES_PASSWORD: pinfast-local-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinfast -d pinfast"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: pinfast
+      MINIO_ROOT_PASSWORD: pinfast-local-password
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 pinfast pinfast-local-password; do sleep 2; done
+        mc mb --ignore-existing local/pinfast
+        mc anonymous set download local/pinfast
+    restart: "no"
+
+  api:
+    build:
+      context: ./pinfast-api
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      RUN_MIGRATIONS: "true"
+      HOST: 0.0.0.0
+      PORT: 3000
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://pinfast:pinfast-local-password@database:5432/pinfast
+      DIRECT_URL: postgresql://pinfast:pinfast-local-password@database:5432/pinfast
+      JWT_ACCESS_SECRET: local-only-secret-change-before-production-123456789
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL_DAYS: 30
+      CORS_ORIGINS: http://localhost:8080
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: lax
+      R2_ENDPOINT: http://minio:9000
+      R2_FORCE_PATH_STYLE: "true"
+      R2_ACCESS_KEY_ID: pinfast
+      R2_SECRET_ACCESS_KEY: pinfast-local-password
+      R2_BUCKET: pinfast
+      R2_PUBLIC_URL: http://localhost:9000/pinfast
+      MAX_UPLOAD_BYTES: 10485760
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
