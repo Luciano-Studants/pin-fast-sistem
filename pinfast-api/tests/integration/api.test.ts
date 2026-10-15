@@ -31,6 +31,7 @@ const env: Env = {
   USER_STORAGE_QUOTA_BYTES: 200 * 1024,
   ENABLE_DOCS: false,
   REGISTRATION_ENABLED: true,
+  APP_URL: "http://localhost:8443",
 };
 
 interface Session {
